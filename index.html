@@ -184,7 +184,22 @@
     .result-phone { font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
     .result-msg { font-size: 15px; color: var(--text-muted); margin-bottom: 4px; }
     .result-time { font-size: 13px; color: var(--text-muted); }
-    .result-dismiss { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
+    .result-ok {
+      margin-top: 20px;
+      display: block;
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .result-ok:active { opacity: 0.75; }
+    .result-card.valid       .result-ok { background: var(--green); color: #fff; }
+    .result-card.already_used .result-ok { background: var(--red);   color: #fff; }
+    .result-card.invalid     .result-ok { background: var(--red);   color: #fff; }
 
     .log-section { padding: 0 16px 24px; }
     .log-title { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
@@ -251,14 +266,14 @@
     </ul>
   </div>
 
-  <div class="overlay" id="overlay" onclick="dismissResult()">
+  <div class="overlay" id="overlay">
     <div class="result-card" id="result-card">
       <div class="result-icon" id="result-icon"></div>
       <div class="result-name" id="result-name"></div>
       <div class="result-phone" id="result-phone"></div>
       <div class="result-msg" id="result-msg"></div>
       <div class="result-time" id="result-time"></div>
-      <div class="result-dismiss">Tap anywhere to dismiss</div>
+      <button class="result-ok" id="result-ok-btn" onclick="dismissResult()">OK</button>
     </div>
   </div>
 
@@ -268,14 +283,14 @@
 
 <script>
   // ── CONFIG — paste your Apps Script /exec URL here ──────────────────────────
-  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxW0VmyddD2ivNMXtLrqk4iqubFiW-CNtmifcPKnpAxAI7Rg2WFl9U_5v_alzmPB6rOJA/exec';
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwozE9amy7PfopaEaQG7kY_w-xrAczK_4nYmyN5U7TgmerPPcamV3zcg2cD8g0DtV3qPA/exec';
 
   // ── State ───────────────────────────────────────────────────────────────────
   var scanner = null;
   var isProcessing = false;
   var scanLog = [];
-  var resultTimeout = null;
   var audioCtx = null;
+  var alarmInterval = null;
 
   // ── Audio ───────────────────────────────────────────────────────────────────
   function beep(freq, duration, type) {
@@ -296,6 +311,15 @@
   function playSuccess()   { beep(880, 150, 'sine'); setTimeout(function(){ beep(1320, 200, 'sine'); }, 150); }
   function playDuplicate() { beep(440, 300, 'triangle'); }
   function playError()     { beep(200, 400, 'sawtooth'); }
+
+  function startAlarm() {
+    stopAlarm();
+    playError();
+    alarmInterval = setInterval(playError, 900);
+  }
+  function stopAlarm() {
+    if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
+  }
 
   // ── Camera ──────────────────────────────────────────────────────────────────
   function startCamera() {
@@ -368,18 +392,18 @@
 
   // ── Result handlers ─────────────────────────────────────────────────────────
   function onValidateSuccess(result) {
-    isProcessing = false;
+    // isProcessing stays true — scanner remains blocked until OK is pressed
     showLoading(false);
-    if (result.status === 'valid')        playSuccess();
+    if (result.status === 'valid')             playSuccess();
     else if (result.status === 'already_used') playDuplicate();
-    else                                  playError();
+    else                                       playError();
     showResult(result);
     addToLog(result);
     refreshStats();
   }
 
   function onValidateError(err) {
-    isProcessing = false;
+    // isProcessing stays true — scanner remains blocked until OK is pressed
     showLoading(false);
     playError();
     showResult({ status: 'invalid', name: 'Error', message: 'Network error — check connection' });
@@ -397,18 +421,26 @@
 
     card.className = 'result-card ' + result.status;
 
+    var okBtn = document.getElementById('result-ok-btn');
+
     if (result.status === 'valid') {
       icon.textContent = '\u2713'; icon.style.color = 'var(--green)';
       msg.textContent = 'You are allowed'; msg.style.color = 'var(--green)';
       msg.style.fontWeight = '700'; msg.style.fontSize = '18px';
+      okBtn.textContent = 'OK';
+      stopAlarm();
     } else if (result.status === 'already_used') {
       icon.textContent = '\u26A0'; icon.style.color = 'var(--amber)';
       msg.textContent = result.message || 'Already checked in'; msg.style.color = 'var(--amber)';
       msg.style.fontWeight = '600'; msg.style.fontSize = '15px';
+      okBtn.textContent = 'ERROR';
+      startAlarm();
     } else {
       icon.textContent = '\u2717'; icon.style.color = 'var(--red)';
       msg.textContent = result.message || 'Invalid pass'; msg.style.color = 'var(--red)';
       msg.style.fontWeight = '600'; msg.style.fontSize = '15px';
+      okBtn.textContent = 'ERROR';
+      startAlarm();
     }
 
     name.textContent  = result.name  || '—';
@@ -416,13 +448,12 @@
     time.textContent  = result.checkinTime ? 'at ' + result.checkinTime : '';
 
     overlay.classList.add('show');
-    if (resultTimeout) clearTimeout(resultTimeout);
-    resultTimeout = setTimeout(dismissResult, result.status === 'valid' ? 4000 : 5000);
   }
 
   function dismissResult() {
+    stopAlarm();
     document.getElementById('overlay').classList.remove('show');
-    if (resultTimeout) { clearTimeout(resultTimeout); resultTimeout = null; }
+    isProcessing = false;  // re-enable scanner only after OK/ERROR is pressed
   }
 
   // ── Log ─────────────────────────────────────────────────────────────────────

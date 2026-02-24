@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Entry Scanner — SUK Iftar 2026</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --border: #27272a;
+      --text: #fafafa;
+      --text-muted: #71717a;
+      --green: #22c55e;
+      --green-bg: #052e16;
+      --red: #ef4444;
+      --red-bg: #2d0a0a;
+      --amber: #f59e0b;
+      --amber-bg: #2d1a00;
+      --blue: #3b82f6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
+    .header .subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat { text-align: center; }
+    .stat-value { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1px; }
+    .stat-checked .stat-value { color: var(--green); }
+    .stat-remaining .stat-value { color: var(--text-muted); }
+    .stat-total .stat-value { color: var(--blue); }
+
+    .scanner-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 360px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+    }
+    #reader video { border-radius: 14px; }
+    #reader img[alt="Info icon"] { display: none !important; }
+    #reader__dashboard { padding: 8px !important; }
+    #reader__dashboard_section_swaplink { color: var(--blue) !important; }
+    #reader__scan_region { border: none !important; }
+
+    .scanner-hint {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .start-btn {
+      display: block;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 16px 32px;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 16px auto 0;
+      width: 100%;
+      max-width: 360px;
+      transition: opacity 0.15s;
+    }
+    .start-btn:active { opacity: 0.8; }
+
+    .manual-section { padding: 8px 16px 20px; text-align: center; }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 4px 0 16px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .manual-row { display: flex; gap: 8px; max-width: 360px; margin: 0 auto; }
+    .manual-row input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .manual-row input:focus { border-color: var(--blue); }
+    .manual-row input::placeholder {
+      text-transform: none;
+      letter-spacing: normal;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+    .manual-row button {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+    .manual-row button:active { opacity: 0.8; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+
+    .result-card {
+      width: 88%;
+      max-width: 360px;
+      border-radius: 24px;
+      padding: 36px 24px;
+      text-align: center;
+      transform: scale(0.9);
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .overlay.show .result-card { transform: scale(1); }
+    .result-card.valid      { background: var(--green-bg); border: 2px solid var(--green); }
+    .result-card.invalid    { background: var(--red-bg);   border: 2px solid var(--red);   }
+    .result-card.already_used { background: var(--amber-bg); border: 2px solid var(--amber); }
+
+    .result-icon { font-size: 56px; margin-bottom: 12px; }
+    .result-name { font-size: 26px; font-weight: 800; margin-bottom: 6px; word-break: break-word; }
+    .result-phone { font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+    .result-msg { font-size: 15px; color: var(--text-muted); margin-bottom: 4px; }
+    .result-time { font-size: 13px; color: var(--text-muted); }
+    .result-dismiss { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
+
+    .log-section { padding: 0 16px 24px; }
+    .log-title { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .log-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .log-item { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+    .log-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .log-dot.valid { background: var(--green); }
+    .log-dot.already_used { background: var(--amber); }
+    .log-dot.invalid { background: var(--red); }
+    .log-name { font-weight: 600; flex: 1; }
+    .log-time { font-size: 12px; color: var(--text-muted); }
+    .log-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 16px; }
+
+    .spinner { width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 250; background: rgba(0,0,0,0.6); }
+    .loading-overlay.show { display: flex; }
+    .loading-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px 36px; text-align: center; }
+    .loading-box .spinner { margin-bottom: 12px; }
+    .loading-box p { font-size: 14px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>SUK Iftar — Entry Scanner</h1>
+    <div class="subtitle">Scan attendee QR code to check in</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat stat-checked">
+      <div class="stat-value" id="stat-in">—</div>
+      <div class="stat-label">Checked In</div>
+    </div>
+    <div class="stat stat-remaining">
+      <div class="stat-value" id="stat-rem">—</div>
+      <div class="stat-label">Remaining</div>
+    </div>
+    <div class="stat stat-total">
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">Registered</div>
+    </div>
+  </div>
+
+  <div class="scanner-container">
+    <div id="reader"></div>
+    <button id="start-btn" class="start-btn" onclick="startCamera()">Tap to Start Camera</button>
+    <div class="scanner-hint" id="scanner-hint">Tap the button above to activate the camera</div>
+  </div>
+
+  <div class="manual-section">
+    <div class="divider">or enter code manually</div>
+    <div class="manual-row">
+      <input type="text" id="manual-input" placeholder="e.g. H7KP3N-M2XA"
+             autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+      <button onclick="handleManual()">Check In</button>
+    </div>
+  </div>
+
+  <div class="log-section">
+    <div class="log-title">Recent Scans</div>
+    <ul class="log-list" id="log-list">
+      <li class="log-empty">No scans yet</li>
+    </ul>
+  </div>
+
+  <div class="overlay" id="overlay" onclick="dismissResult()">
+    <div class="result-card" id="result-card">
+      <div class="result-icon" id="result-icon"></div>
+      <div class="result-name" id="result-name"></div>
+      <div class="result-phone" id="result-phone"></div>
+      <div class="result-msg" id="result-msg"></div>
+      <div class="result-time" id="result-time"></div>
+      <div class="result-dismiss">Tap anywhere to dismiss</div>
+    </div>
+  </div>
+
+  <div class="loading-overlay" id="loading">
+    <div class="loading-box"><div class="spinner"></div></div>
+  </div>
+
+<script>
+  // ── CONFIG — paste your Apps Script /exec URL here ──────────────────────────
+  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwozE9amy7PfopaEaQG7kY_w-xrAczK_4nYmyN5U7TgmerPPcamV3zcg2cD8g0DtV3qPA/exec';
+
+  // ── State ───────────────────────────────────────────────────────────────────
+  var scanner = null;
+  var isProcessing = false;
+  var scanLog = [];
+  var resultTimeout = null;
+  var audioCtx = null;
+
+  // ── Audio ───────────────────────────────────────────────────────────────────
+  function beep(freq, duration, type) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0.3;
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration / 1000);
+      osc.stop(audioCtx.currentTime + duration / 1000);
+    } catch (e) {}
+  }
+  function playSuccess()   { beep(880, 150, 'sine'); setTimeout(function(){ beep(1320, 200, 'sine'); }, 150); }
+  function playDuplicate() { beep(440, 300, 'triangle'); }
+  function playError()     { beep(200, 400, 'sawtooth'); }
+
+  // ── Camera ──────────────────────────────────────────────────────────────────
+  function startCamera() {
+    var btn  = document.getElementById('start-btn');
+    var hint = document.getElementById('scanner-hint');
+    btn.disabled = true;
+    btn.textContent = 'Starting…';
+    hint.textContent = 'Requesting camera access…';
+
+    scanner = new Html5Qrcode('reader');
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 12, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] },
+      onScanSuccess,
+      function () {}
+    ).then(function () {
+      btn.style.display = 'none';
+      hint.textContent = 'Point camera at the QR code on the attendee\'s phone';
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Retry Camera';
+      btn.style.display = 'block';
+      hint.textContent = 'Camera error: ' + (err && (err.message || String(err)));
+    });
+  }
+
+  // ── Scan / Manual ───────────────────────────────────────────────────────────
+  function onScanSuccess(decodedText) {
+    if (isProcessing) return;
+    var token = decodedText.trim();
+    if (!token) return;
+    processToken(token);
+  }
+
+  function handleManual() {
+    var input = document.getElementById('manual-input');
+    var token = input.value.trim();
+    if (!token) return;
+    input.value = '';
+    processToken(token);
+  }
+
+  document.getElementById('manual-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') handleManual();
+  });
+
+  // ── API calls via fetch (no google.script.run — works outside iframe) ───────
+  function processToken(token) {
+    if (isProcessing) return;
+    isProcessing = true;
+    showLoading(true);
+
+    fetch(SCRIPT_URL + '?action=validate&token=' + encodeURIComponent(token))
+      .then(function(r) { return r.json(); })
+      .then(onValidateSuccess)
+      .catch(function(err) { onValidateError(err); });
+  }
+
+  function refreshStats() {
+    fetch(SCRIPT_URL + '?action=stats')
+      .then(function(r) { return r.json(); })
+      .then(function(s) {
+        document.getElementById('stat-in').textContent    = s.checkedIn;
+        document.getElementById('stat-rem').textContent   = s.remaining;
+        document.getElementById('stat-total').textContent = s.total;
+      })
+      .catch(function() {});
+  }
+
+  // ── Result handlers ─────────────────────────────────────────────────────────
+  function onValidateSuccess(result) {
+    isProcessing = false;
+    showLoading(false);
+    if (result.status === 'valid')        playSuccess();
+    else if (result.status === 'already_used') playDuplicate();
+    else                                  playError();
+    showResult(result);
+    addToLog(result);
+    refreshStats();
+  }
+
+  function onValidateError(err) {
+    isProcessing = false;
+    showLoading(false);
+    playError();
+    showResult({ status: 'invalid', name: 'Error', message: 'Network error — check connection' });
+  }
+
+  // ── Result display ──────────────────────────────────────────────────────────
+  function showResult(result) {
+    var overlay = document.getElementById('overlay');
+    var card    = document.getElementById('result-card');
+    var icon    = document.getElementById('result-icon');
+    var name    = document.getElementById('result-name');
+    var phone   = document.getElementById('result-phone');
+    var msg     = document.getElementById('result-msg');
+    var time    = document.getElementById('result-time');
+
+    card.className = 'result-card ' + result.status;
+
+    if (result.status === 'valid') {
+      icon.textContent = '\u2713'; icon.style.color = 'var(--green)';
+      msg.textContent = 'You are allowed'; msg.style.color = 'var(--green)';
+      msg.style.fontWeight = '700'; msg.style.fontSize = '18px';
+    } else if (result.status === 'already_used') {
+      icon.textContent = '\u26A0'; icon.style.color = 'var(--amber)';
+      msg.textContent = result.message || 'Already checked in'; msg.style.color = 'var(--amber)';
+      msg.style.fontWeight = '600'; msg.style.fontSize = '15px';
+    } else {
+      icon.textContent = '\u2717'; icon.style.color = 'var(--red)';
+      msg.textContent = result.message || 'Invalid pass'; msg.style.color = 'var(--red)';
+      msg.style.fontWeight = '600'; msg.style.fontSize = '15px';
+    }
+
+    name.textContent  = result.name  || '—';
+    phone.textContent = result.phone || '';
+    time.textContent  = result.checkinTime ? 'at ' + result.checkinTime : '';
+
+    overlay.classList.add('show');
+    if (resultTimeout) clearTimeout(resultTimeout);
+    resultTimeout = setTimeout(dismissResult, result.status === 'valid' ? 4000 : 5000);
+  }
+
+  function dismissResult() {
+    document.getElementById('overlay').classList.remove('show');
+    if (resultTimeout) { clearTimeout(resultTimeout); resultTimeout = null; }
+  }
+
+  // ── Log ─────────────────────────────────────────────────────────────────────
+  function addToLog(result) {
+    scanLog.unshift(result);
+    if (scanLog.length > 20) scanLog.pop();
+    var list = document.getElementById('log-list');
+    var html = '';
+    scanLog.forEach(function(entry) {
+      html += '<li class="log-item">'
+        + '<span class="log-dot ' + entry.status + '"></span>'
+        + '<span class="log-name">' + escapeHtml(entry.name || '—') + '</span>'
+        + '<span class="log-time">' + escapeHtml(entry.checkinTime || '') + '</span>'
+        + '</li>';
+    });
+    list.innerHTML = html;
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function showLoading(on) { document.getElementById('loading').classList.toggle('show', on); }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  window.addEventListener('load', function() {
+    refreshStats();
+    setInterval(refreshStats, 30000);
+  });
+</script>
+</body>
+</html>
